@@ -5,65 +5,105 @@
 #include <ctime>
 #include <cstdlib>
 
+#include <algorithm>
+#include <iterator>
+#include <forward_list>
 
-int partition (std::vector<int>& arr, int low, int high)
+
+
+template <class ForwardIt>
+void __quicksort(ForwardIt first, ForwardIt last)
 {
-	int pivot = arr[high];
-	int i = (low - 1);
+	if(first == last) return;
+	auto pivot = *std::next(first, std::distance(first,last)/2);
+	ForwardIt middle1 = std::partition(first, last,
+							[pivot](const auto& em){ return em < pivot; });
+	ForwardIt middle2 = std::partition(middle1, last,
+						[pivot](const auto& em){ return !(pivot < em); });
+	__quicksort(first, middle1);
+	__quicksort(middle2, last);
+}
 
-	auto swap = [](int* a, int* b)
-	{
-		int t = *a;
-		*a = *b;
-		*b = t;
-	};
+void quicksort(std::vector<int>& arr)
+{
+	__quicksort(arr.begin(), arr.end());
+}
 
-	for (int j = low; j <= high- 1; j++)
+template <class ForwardIt>
+void __quicksort_p(ForwardIt first, ForwardIt last, int cutoff)
+{
+	if(first == last) return;
+	auto pivot = *std::next(first, std::distance(first,last)/2);
+	ForwardIt middle1 = std::partition(first, last,
+							[pivot](const auto& em){ return em < pivot; });
+	ForwardIt middle2 = std::partition(middle1, last,
+						[pivot](const auto& em){ return !(pivot < em); });
+
+	if (last - first < cutoff)
 	{
-		if (arr[j] <= pivot) 
+		__quicksort_p(first, middle1, cutoff);
+		__quicksort_p(middle2, last, cutoff);
+	}
+	else
+	{
+		#pragma omp task
+		{ __quicksort_p(first, middle1, cutoff); }
+
+		#pragma omp task
+		{ __quicksort_p(middle2, last, cutoff); }
+	}
+}
+
+void quick_sort_p(std::vector<int>& arr)
+{
+
+	constexpr int cutoff = 1000;
+	constexpr int numThreads = 2;
+
+	#pragma omp parallel num_threads(numThreads)
+	{
+		#pragma omp single nowait
 		{
-			i++;
-			swap(&arr[i], &arr[j]); 
+			__quicksort_p(arr.begin(), arr.end(), cutoff);
 		}
 	}
-	swap(&arr[i + 1], &arr[high]); 
-	return (i + 1); 
 }
 
-void quick_sort(std::vector<int>& arr, int low, int high) 
-{
-	if (low < high) 
-	{
-		int pi = partition(arr, low, high); 
-
-		quick_sort(arr, low, pi - 1); 
-		quick_sort(arr, pi + 1, high); 
-	}
-}
 
 int main(int, char**)
 {
 	// #pragma omp parallel
 	// std::cout << "Hello, world!" << std::endl;
 
-	constexpr size_t rand_size = 40;
+	constexpr size_t rand_size = 1000*1000*100;
 
 	std::vector<int> a;
+	// std::vector<int> b;
 
 	srand(time(0));
 
 	for (size_t i = 0; i < rand_size; ++i)
 	{
-		a.push_back(rand()% 100 + 1);
+		int x = rand()% 100 + 1;
+		a.push_back(x);
 	}
 
-	for (auto i : a) { std::cout << i << " "; }
-	std::cout << std::endl;
+	// get start time
+	double t1 = omp_get_wtime();
 
-	quick_sort(a, 0, a.size()-1);
+	// for (auto i : a) { std::cout << i << " "; }
+	// std::cout << std::endl;
 
-	for (auto i : a) { std::cout << i << " "; }
-	std::cout << std::endl;
+
+	// quicksort(a);
+	quick_sort_p(a);
+
+
+	double t2 = omp_get_wtime();
+	printf("%zu,%lf,%d\n", rand_size, t2-t1, omp_get_max_threads());
+
+	// for (auto i : a) { std::cout << i << " "; }
+	// std::cout << std::endl;
 }
 
 
